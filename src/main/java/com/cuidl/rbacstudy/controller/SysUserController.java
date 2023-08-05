@@ -7,6 +7,7 @@ import com.cuidl.rbacstudy.common.constant.Constant;
 import com.cuidl.rbacstudy.entity.PageBean;
 import com.cuidl.rbacstudy.entity.SysRole;
 import com.cuidl.rbacstudy.entity.SysUser;
+import com.cuidl.rbacstudy.entity.SysUserRole;
 import com.cuidl.rbacstudy.service.SysRoleService;
 import com.cuidl.rbacstudy.service.SysUserRoleService;
 import com.cuidl.rbacstudy.service.SysUserService;
@@ -24,10 +25,8 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.annotation.Resource;
 import java.io.File;
 import java.io.IOException;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.security.Principal;
+import java.util.*;
 
 /**
  * 用户管理
@@ -55,6 +54,21 @@ public class SysUserController {
 
     private static final String SRC = "image/userAvatar/";
 
+    @GetMapping("/info")
+    @PreAuthorize("hasAuthority('system:user:query')")
+    public R userInfo(Principal principal) {
+        Map<String, Object> resultMap = new HashMap<>();
+        SysUser currentUser = userService.getUserByUsername(principal.getName());
+        resultMap.put("currentUser", currentUser);
+        return R.ok(resultMap);
+    }
+
+    /**
+     * 添加或者修改
+     *
+     * @param user
+     * @return
+     */
     @RequestMapping("save")
     @PreAuthorize("hasAnyAuthority('system:user:add','system:user:edit')")
     public R save(@RequestBody SysUser user) {
@@ -71,12 +85,13 @@ public class SysUserController {
     }
 
     /**
-     * 添加或者修改
+     * 修改密码
+     *
      * @param user
      * @return
      */
-    @PostMapping("/save")
-    @PreAuthorize("hasAuthority('system:role:add')"+"||"+"hasAuthority('system:role:edit')")
+    @PostMapping("/updateUserPwd")
+    @PreAuthorize("hasAuthority('system:user:edit')")
     public R updatePwd(@RequestBody SysUser user) {
         SysUser sysUser = userService.getById(user.getId());
         if (!passwordEncoder.matches(user.getOldPassword(), sysUser.getPassword())) {
@@ -142,7 +157,7 @@ public class SysUserController {
     public R list(@RequestBody PageBean pageBean) {
         String query = pageBean.getQuery().trim();
         Page<SysUser> userPage = userService.page(new Page<SysUser>(pageBean.getPageNum(), pageBean.getPageSize()),
-                new QueryWrapper<SysUser>().like(StringUtil.isNotEmpty(query), "username", query));
+                new QueryWrapper<SysUser>().like(StringUtil.isNotEmpty(query), "username", query).eq("del_flag", "0"));
         List<SysUser> userList = userPage.getRecords();
         userList.forEach(user -> {
             List<SysRole> roleList = roleService.list(new QueryWrapper<SysRole>().inSql("id",
@@ -229,6 +244,30 @@ public class SysUserController {
         SysUser sysUser = userService.getById(id);
         sysUser.setStatus(status);
         userService.saveOrUpdate(sysUser);
+        return R.ok();
+    }
+
+    /**
+     * 用户角色授权
+     *
+     * @param userId
+     * @param roleIds
+     * @return
+     */
+    @Transactional
+    @PostMapping("/grantRole/{userId}")
+    @PreAuthorize("hasAuthority('system:user:role')")
+    public R grantRole(@PathVariable("userId") Long userId, @RequestBody Long[] roleIds) {
+        List<SysUserRole> userRoleList = new ArrayList<>();
+        Arrays.stream(roleIds).forEach(r -> {
+            SysUserRole sysUserRole = new SysUserRole();
+            sysUserRole.setRoleId(r);
+            sysUserRole.setUserId(userId);
+            userRoleList.add(sysUserRole);
+        });
+        userRoleService.remove(new QueryWrapper<SysUserRole>().eq("user_id", userId));
+        userRoleService.saveBatch(userRoleList);
+        //redisUtil.removeByPrex(Constant.AUTHORITY_KEY);
         return R.ok();
     }
 

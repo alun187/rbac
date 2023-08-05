@@ -36,6 +36,9 @@ public class WebSecurityConfiguration extends WebSecurityConfigurerAdapter {
     @Resource
     private JwtLogoutSuccessHandler logoutSuccessHandler;
 
+    @Resource
+    private CaptchaFilter captchaFilter;
+
     private static final String[] URL_WHITELIST ={
             "/login",
             "/logout",
@@ -89,6 +92,7 @@ public class WebSecurityConfiguration extends WebSecurityConfigurerAdapter {
 
         // 自定义过滤器配置
                 .and().addFilter(jwtAuthenticationFilter());
+                //.addFilterBefore(captchaFilter, UsernamePasswordAuthenticationFilter.class);
     }
 
     @Override

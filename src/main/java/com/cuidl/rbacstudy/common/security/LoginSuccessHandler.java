@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
 import javax.servlet.ServletException;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 
 /**
  * 登录成功处理器
+ *
  * @author cuidl
  */
 @Component
@@ -56,18 +58,23 @@ public class LoginSuccessHandler implements AuthenticationSuccessHandler {
         List<SysRole> roleList = roleService.list(new QueryWrapper<SysRole>().inSql("id", String.format("select role_id from sys_user_role where user_id = '%s'", user.getId())));
         user.setRoles(roleList.stream().map(SysRole::getName).collect(Collectors.joining(",")));
         HashSet<SysMenu> menuSet = new HashSet<>();
+        StringBuilder permsStr = new StringBuilder();
         // 获取所有菜单权限
         for (SysRole role : roleList) {
             List<SysMenu> menuList = menuService.list(new QueryWrapper<SysMenu>().inSql("id", String.format("select menu_id from sys_role_menu where role_id = '%s'", role.getId())));
-            menuSet.addAll(menuList);
+            for (SysMenu menu : menuList) {
+                menuSet.add(menu);
+                permsStr.append(menu.getPerms()).append(",");
+            }
         }
+        String[] perms = StringUtils.tokenizeToStringArray(permsStr.toString(), ",");
         List<SysMenu> menuList = new ArrayList<>(menuSet);
         // 排序
         menuList.sort(Comparator.comparing(SysMenu::getOrderNum));
         // 返回树形结构的菜单
         List<SysMenu> sysMenus = menuService.buildTreeMenu(menuList);
 
-        outputStream.write(JSONUtil.toJsonStr(Objects.requireNonNull(Objects.requireNonNull(R.ok("登录成功").put("authorization", token)).put("currentUser", user)).put("menuList", sysMenus)).getBytes());
+        outputStream.write(JSONUtil.toJsonStr(Objects.requireNonNull(Objects.requireNonNull(R.ok("登录成功").put("authorization", token)).put("currentUser", user)).put("menuList", sysMenus).put("perms", perms)).getBytes());
         outputStream.flush();
         outputStream.close();
     }
